@@ -1,0 +1,462 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Company ────────────────────────────────────────────────
+model Company {
+  id                String   @id @default(cuid())
+  name              String
+  logo              String?
+  incorporationDate DateTime?
+  state             String?
+  country           String   @default("US")
+  authorizedCommon  Int      @default(10000000)
+  authorizedPreferred Int    @default(0)
+  parValue          Float    @default(0.0001)
+  fiscalYearEnd     String   @default("12/31")
+  industry          String?
+  address           String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  shareholders          Shareholder[]
+  equityClasses         EquityClass[]
+  equityGrants          EquityGrant[]
+  optionPools           OptionPool[]
+  optionGrants          OptionGrant[]
+  warrants              Warrant[]
+  convertibleInstruments ConvertibleInstrument[]
+  vestingPlans          VestingPlan[]
+  transactions          Transaction[]
+  documents             Document[]
+  folders               Folder[]
+  boardResolutions      BoardResolution[]
+  certificates          Certificate[]
+  agreements            Agreement[]
+  templates             Template[]
+  valuations            Valuation[]
+  timelineEvents        TimelineEvent[]
+}
+
+// ─── Shareholder ────────────────────────────────────────────
+enum ShareholderType {
+  individual
+  institution
+}
+
+enum ShareholderRole {
+  founder
+  employee
+  investor
+  advisor
+  board_member
+  consultant
+}
+
+enum AccessLevel {
+  none
+  view
+  manage
+}
+
+model Shareholder {
+  id          String          @id @default(cuid())
+  companyId   String
+  name        String
+  email       String?
+  phone       String?
+  type        ShareholderType @default(individual)
+  role        ShareholderRole @default(employee)
+  accessLevel AccessLevel     @default(none)
+  isCompany   Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  company              Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equityGrants         EquityGrant[]
+  optionGrants         OptionGrant[]
+  warrants             Warrant[]
+  convertibleInstruments ConvertibleInstrument[]
+  transactionsFrom     Transaction[]           @relation("TransactionFrom")
+  transactionsTo       Transaction[]           @relation("TransactionTo")
+  agreements           Agreement[]
+}
+
+// ─── Equity Class ───────────────────────────────────────────
+enum EquityType {
+  common
+  preferred
+}
+
+enum AntiDilution {
+  none
+  broad_weighted_avg
+  narrow_weighted_avg
+  full_ratchet
+}
+
+model EquityClass {
+  id                      String       @id @default(cuid())
+  companyId               String
+  name                    String
+  type                    EquityType   @default(common)
+  authorizedShares        Int
+  parValue                Float        @default(0.0001)
+  votingRights            Boolean      @default(true)
+  liquidationPreference   Float        @default(1.0)
+  liquidationMultiple     Float        @default(1.0)
+  participatingPreferred  Boolean      @default(false)
+  conversionRatio         Float        @default(1.0)
+  antidilutionProtection  AntiDilution @default(none)
+  seniorityLevel          Int          @default(0)
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equityGrants EquityGrant[]
+  optionPools  OptionPool[]
+  warrants     Warrant[]
+  convertibles ConvertibleInstrument[]
+}
+
+// ─── Equity Grant ───────────────────────────────────────────
+enum GrantStatus {
+  active
+  fully_vested
+  cancelled
+  exercised
+}
+
+model EquityGrant {
+  id                String      @id @default(cuid())
+  companyId         String
+  equityClassId     String
+  shareholderId     String
+  grantDate         DateTime
+  numberOfShares    Int
+  pricePerShare     Float
+  vestingPlanId     String?
+  status            GrantStatus @default(active)
+  certificateNumber String?
+  boardApprovalDate DateTime?
+  notes             String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equityClass  EquityClass  @relation(fields: [equityClassId], references: [id])
+  shareholder  Shareholder  @relation(fields: [shareholderId], references: [id])
+  vestingPlan  VestingPlan? @relation(fields: [vestingPlanId], references: [id])
+  vestingEvents VestingEvent[]
+  transactions Transaction[]
+  certificates Certificate[]
+}
+
+// ─── Option Pool ────────────────────────────────────────────
+model OptionPool {
+  id                    String   @id @default(cuid())
+  companyId             String
+  name                  String
+  totalPoolShares       Int
+  issuedShares          Int      @default(0)
+  equityClassOnExerciseId String
+  boardApprovalDate     DateTime?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  company              Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equityClassOnExercise EquityClass  @relation(fields: [equityClassOnExerciseId], references: [id])
+  optionGrants         OptionGrant[]
+}
+
+// ─── Option Grant ───────────────────────────────────────────
+enum OptionStatus {
+  active
+  exercised
+  cancelled
+  expired
+}
+
+model OptionGrant {
+  id              String       @id @default(cuid())
+  companyId       String
+  optionPoolId    String
+  shareholderId   String
+  grantDate       DateTime
+  numberOfOptions Int
+  exercisePrice   Float
+  vestingPlanId   String?
+  expirationDate  DateTime
+  status          OptionStatus @default(active)
+  exercisedShares Int          @default(0)
+  exerciseDate    DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  optionPool   OptionPool   @relation(fields: [optionPoolId], references: [id])
+  shareholder  Shareholder  @relation(fields: [shareholderId], references: [id])
+  vestingPlan  VestingPlan? @relation(fields: [vestingPlanId], references: [id])
+  vestingEvents VestingEvent[]
+  transactions Transaction[]
+}
+
+// ─── Warrant ────────────────────────────────────────────────
+enum WarrantStatus {
+  active
+  exercised
+  expired
+  cancelled
+}
+
+model Warrant {
+  id                    String        @id @default(cuid())
+  companyId             String
+  shareholderId         String
+  grantDate             DateTime
+  numberOfShares        Int
+  exercisePrice         Float
+  expirationDate        DateTime
+  equityClassOnExerciseId String
+  status                WarrantStatus @default(active)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  company              Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shareholder          Shareholder @relation(fields: [shareholderId], references: [id])
+  equityClassOnExercise EquityClass @relation(fields: [equityClassOnExerciseId], references: [id])
+  transactions         Transaction[]
+}
+
+// ─── Convertible Instrument ─────────────────────────────────
+enum InstrumentType {
+  SAFE
+  convertible_note
+}
+
+enum ConversionBasis {
+  pre_money
+  post_money
+}
+
+enum InstrumentStatus {
+  outstanding
+  converted
+  cancelled
+}
+
+model ConvertibleInstrument {
+  id                  String           @id @default(cuid())
+  companyId           String
+  shareholderId       String
+  instrumentType      InstrumentType
+  instrumentName      String
+  issueDate           DateTime
+  principalAmount     Float
+  interestRate        Float?
+  interestAccrualMethod String?
+  valuationCap        Float?
+  discountPercent     Float?
+  maturityDate        DateTime?
+  conversionBasis     ConversionBasis  @default(post_money)
+  status              InstrumentStatus @default(outstanding)
+  convertedToClassId  String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  company            Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shareholder        Shareholder  @relation(fields: [shareholderId], references: [id])
+  convertedToClass   EquityClass? @relation(fields: [convertedToClassId], references: [id])
+  transactions       Transaction[]
+}
+
+// ─── Vesting Plan ───────────────────────────────────────────
+enum VestingFrequency {
+  monthly
+  quarterly
+  annually
+}
+
+enum AccelerationTrigger {
+  none
+  single_trigger
+  double_trigger
+}
+
+model VestingPlan {
+  id                  String              @id @default(cuid())
+  companyId           String
+  name                String
+  totalDurationMonths Int
+  cliffMonths         Int
+  vestingFrequency    VestingFrequency    @default(monthly)
+  accelerationTrigger AccelerationTrigger @default(none)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equityGrants EquityGrant[]
+  optionGrants OptionGrant[]
+}
+
+// ─── Vesting Event ──────────────────────────────────────────
+model VestingEvent {
+  id               String   @id @default(cuid())
+  equityGrantId    String?
+  optionGrantId    String?
+  date             DateTime
+  sharesVested     Int
+  cumulativeVested Int
+  createdAt        DateTime @default(now())
+
+  equityGrant EquityGrant? @relation(fields: [equityGrantId], references: [id])
+  optionGrant OptionGrant? @relation(fields: [optionGrantId], references: [id])
+}
+
+// ─── Transaction ────────────────────────────────────────────
+enum TransactionType {
+  exercise
+  transfer
+  conversion
+  repurchase
+  cancellation
+}
+
+model Transaction {
+  id                  String          @id @default(cuid())
+  companyId           String
+  type                TransactionType
+  fromShareholderId   String?
+  toShareholderId     String?
+  equityGrantId       String?
+  optionGrantId       String?
+  warrantId           String?
+  convertibleId       String?
+  date                DateTime
+  numberOfShares      Int
+  pricePerShare       Float?
+  notes               String?
+  boardApprovalDate   DateTime?
+  createdAt           DateTime        @default(now())
+
+  company           Company                @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromShareholder   Shareholder?           @relation("TransactionFrom", fields: [fromShareholderId], references: [id])
+  toShareholder     Shareholder?           @relation("TransactionTo", fields: [toShareholderId], references: [id])
+  equityGrant       EquityGrant?           @relation(fields: [equityGrantId], references: [id])
+  optionGrant       OptionGrant?           @relation(fields: [optionGrantId], references: [id])
+  warrant           Warrant?               @relation(fields: [warrantId], references: [id])
+  convertible       ConvertibleInstrument? @relation(fields: [convertibleId], references: [id])
+}
+
+// ─── Timeline Event ─────────────────────────────────────────
+model TimelineEvent {
+  id          String   @id @default(cuid())
+  companyId   String
+  action      String
+  description String
+  entityType  String?
+  entityId    String?
+  date        DateTime
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+// ─── Documents ──────────────────────────────────────────────
+model Document {
+  id                String   @id @default(cuid())
+  companyId         String
+  folderId          String?
+  name              String
+  fileUrl           String
+  fileType          String?
+  uploadedBy        String?
+  relatedEntityType String?
+  relatedEntityId   String?
+  createdAt         DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  folder  Folder? @relation(fields: [folderId], references: [id])
+}
+
+model Folder {
+  id             String   @id @default(cuid())
+  companyId      String
+  parentFolderId String?
+  name           String
+  createdAt      DateTime @default(now())
+
+  company   Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent    Folder?    @relation("FolderTree", fields: [parentFolderId], references: [id])
+  children  Folder[]   @relation("FolderTree")
+  documents Document[]
+}
+
+// ─── Admin Records ──────────────────────────────────────────
+model BoardResolution {
+  id          String   @id @default(cuid())
+  companyId   String
+  title       String
+  date        DateTime
+  description String?
+  documentId  String?
+  status      String   @default("approved")
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+model Certificate {
+  id                String   @id @default(cuid())
+  companyId         String
+  equityGrantId     String
+  certificateNumber String
+  templateId        String?
+  generatedAt       DateTime @default(now())
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  equityGrant EquityGrant @relation(fields: [equityGrantId], references: [id])
+}
+
+model Agreement {
+  id            String    @id @default(cuid())
+  companyId     String
+  shareholderId String
+  type          String
+  documentId    String?
+  signedAt      DateTime?
+  createdAt     DateTime  @default(now())
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  shareholder Shareholder @relation(fields: [shareholderId], references: [id])
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  companyId   String
+  name        String
+  type        String
+  htmlContent String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
+
+// ─── Valuation ──────────────────────────────────────────────
+model Valuation {
+  id            String   @id @default(cuid())
+  companyId     String
+  effectiveDate DateTime
+  fairMarketValue Float
+  method        String?
+  notes         String?
+  createdAt     DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+}
