@@ -1,28 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 export function middleware(request: NextRequest) {
-  const authHeader = request.headers.get('authorization')
+  const { pathname } = request.nextUrl
 
-  if (authHeader) {
-    const [scheme, encoded] = authHeader.split(' ')
-    if (scheme === 'Basic' && encoded) {
-      const decoded = atob(encoded)
-      const [user, password] = decoded.split(':')
-      const validUser = process.env.BASIC_AUTH_USER || 'admin'
-      const validPassword = process.env.BASIC_AUTH_PASSWORD || 'captable2024'
-
-      if (user === validUser && password === validPassword) {
-        return NextResponse.next()
-      }
-    }
+  // Allow login page and auth API
+  if (pathname === '/login' || pathname.startsWith('/api/auth')) {
+    return NextResponse.next()
   }
 
-  return new NextResponse('Authentication required', {
-    status: 401,
-    headers: {
-      'WWW-Authenticate': 'Basic realm="Cap Table Management"',
-    },
-  })
+  // Check for auth cookie
+  const authCookie = request.cookies.get('cap-table-auth')
+  if (authCookie?.value === 'authenticated') {
+    return NextResponse.next()
+  }
+
+  // Redirect to login
+  const loginUrl = new URL('/login', request.url)
+  return NextResponse.redirect(loginUrl)
 }
 
 export const config = {
